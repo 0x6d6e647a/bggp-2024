@@ -3,7 +3,7 @@
 file_load_va: equ 4096 * 40
 
 elf_header:
-        db 0x7f, 'E', 'L', 'F'  ; Magic Bytes
+        db 0x7f, 'ELF'          ; Magic Bytes
         db 1                    ; 32-bit
         db 1                    ; Little Endian
         db 1                    ; ELF version
