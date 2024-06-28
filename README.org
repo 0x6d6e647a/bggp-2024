@@ -70,7 +70,7 @@ will clobber the original =envp= but since we're not passing it via =execve= it
 doesn't matter.
 
 We are now ready to perform a system call. From here the process is identical to
-a normal 64-bit executable so read the next section about ELF64.
+a normal 64-bit executable.
 
 *** ELF64 x86_64
 In a 64-bit environment, the =execve= system call arguments are placed in the
