@@ -1,0 +1,79 @@
+#+TITLE: Binary Golf Grand Prix 2024
+
+My submitted entries for [[https://binary.golf/5][BGGP5]].
+
+* Building and Running.
+1. Ensure that [[https://nasm.us/][NASM]] and [[https://www.gnu.org/software/make/][GNU Make]] are installed.
+2. Run =make= in this directory.
+   #+begin_src bash
+     make all
+   #+end_src
+
+* Write-Ups.
+
+** ELF
+The general idea in all of these ELF binaries is to invoke the Linux kernel's
+=execve= system call in order to execute =curl= with the first supplied command
+line argument. The arguments to the =execve= system call are as follows:
+- pointer to a null terminated path string to the executable to =exec=
+- pointer to the =argv= array of pointers to null terminated argument strings
+  terminated by a null pointer
+- pointer to the =envp= array of pointers to null terminated environment strings
+  terminated by a null pointer.
+In order to minimize instructions, in all cases the =envp= argument will be a
+null pointer. The calling convention changes with each bit width and environment
+and are explained in detail in the following sections.
+
+Assembly instructions were chosen such that the same effect could be
+accomplished with fewer encoded bytes. An example of such is using the =lea=
+instruction instead of =mov= because it encodes to fewer bytes. CPU registers
+being set to zero on program initialization also helped to minimize the number
+of instructions used. The CPU will automatically zero extend 32-bit register
+assignments to the full 64-bit register size. This allows using 32-bit
+instructions that are much smaller to encode while still being able to set a
+full 64-bit register's value.
+
+The binaries are crafted to take advantage of unnecessary sections of the ELF
+header and program header table section to store code and data in a more
+compact format. Special thanks to Nathan Otterness and his fantastic article
+"[[https://nathanotterness.com/2021/10/tiny_elf_modernized.html][Tiny ELF Files: Revisited in 2021]]" for a great deal of the techniques
+employed. Instructions were packed within the unused space as long there was at
+least 2 bytes room remaining for a short =jmp= instruction to fit to chain
+execution between these sections.
+
+*** ELF32 x86 (32-bit Environment)
+In a 32-bit environment, the =execve= system call arguments are placed in the
+=eax=, =ebx=, =ecx= and =edx= registers. In order to invoke the system call, a
+CPU interrupt must be performed with the value of =0x80=. The =argv= of the
+current program is reused by =curl= since the arguments are the same.
+
+
+*** ELF32 x86 (64-bit Environment)
+When executing a 32-bit ELF in a 64-bit environment, we cannot directly =execve=
+to the 64-bit =curl= executable. Instead we employ the "Heaven's Gate" technique
+in order to allow our 32-bit ELF to switch to a 64-bit context. Here are some
+good resources that explain the technique in much greater detail:
+- [[https://www.malwaretech.com/2014/02/the-0x33-segment-selector-heavens-gate.html][(Windows) Marcus Hutchins: "The 0x33 Segment Selector (Heavens Gate)"]]
+- [[https://redcanary.com/blog/threat-detection/heavens-gate-technique-on-linux/][(Linux) Carl Petty: "Unlocking Heaven's Gate on Linux"]]
+
+After the "Heaven's Gate" jump, the executable will be in a 64-bit context and
+can access the larger registers and instructions. However, except where
+necessary 32-bit instructions are preferred to save space. We cannot simply
+reuse program's =argv= for =execve= since the program was launched as a 32-bit
+executable and since we are now in a 64-bit context the arguments for =execve=
+will expect 64-bit pointers. Since the larger addresses are still addressing the
+same memory space, we can simply move =argv[2]= over by 4 bytes and zero out
+where it was to convert =argv[1]= to 64-bit pointer. We then zero out the next
+12 bytes after where we copied =argv[2]= to finish converting =argv[2]= to a
+64-bit pointer and setting up a null pointer to denote the end of =argv=. This
+will clobber the original =envp= but since we're not passing it via =execve= it
+doesn't matter.
+
+We are now ready to perform a system call. From here the process is identical to
+a normal 64-bit executable so read the next section about ELF64.
+
+*** ELF64 x86_64
+In a 64-bit environment, the =execve= system call arguments are placed in the
+=rdi=, =rsi=, =rdx=, and =r10= registers. The =syscall= instruction is used to
+invoke the system call instead of a CPU interrupt.
+
